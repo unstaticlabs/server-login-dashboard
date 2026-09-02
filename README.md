@@ -4,6 +4,15 @@ A compact, attention-oriented SSH login dashboard for Debian-family production
 servers. Normal metrics stay quiet; exceptional conditions and actionable
 notices appear only when attention is required.
 
+## Documentation
+
+- [`AGENTS.md`](AGENTS.md): self-contained context and safety rules for coding
+  agents entering the repository with no prior project knowledge
+- [`CONTRIBUTING.md`](CONTRIBUTING.md): development workflow, validation levels,
+  and review checklist
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): runtime flows, update
+  transaction, configuration contract, tests, and trust boundaries
+
 ## What it shows
 
 - A bold production warning and configurable stack name
