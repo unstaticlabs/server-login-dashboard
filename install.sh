@@ -59,8 +59,11 @@ load_defaults() {
   : "${SLD_CONFIRMATION:=Confirm your target before running any command.}"
   : "${SLD_ONLY_USER:=root}"
   : "${SLD_DISK_WARN_PERCENT:=80}"
+  : "${SLD_DISK_ERROR_PERCENT:=95}"
   : "${SLD_MEMORY_WARN_PERCENT:=85}"
+  : "${SLD_MEMORY_ERROR_PERCENT:=95}"
   : "${SLD_SWAP_WARN_PERCENT:=50}"
+  : "${SLD_SWAP_ERROR_PERCENT:=80}"
   : "${SLD_TAILSCALE:=auto}"
   : "${SLD_APT_UPDATES:=auto}"
   : "${SLD_SSH_SERVICE:=ssh.service}"
@@ -91,8 +94,11 @@ write_config() {
     printf "SLD_CONFIRMATION='%s'\n" "$(quote_value "$SLD_CONFIRMATION")"
     printf "SLD_ONLY_USER='%s'\n" "$(quote_value "$SLD_ONLY_USER")"
     printf 'SLD_DISK_WARN_PERCENT=%s\n' "$SLD_DISK_WARN_PERCENT"
+    printf 'SLD_DISK_ERROR_PERCENT=%s\n' "$SLD_DISK_ERROR_PERCENT"
     printf 'SLD_MEMORY_WARN_PERCENT=%s\n' "$SLD_MEMORY_WARN_PERCENT"
+    printf 'SLD_MEMORY_ERROR_PERCENT=%s\n' "$SLD_MEMORY_ERROR_PERCENT"
     printf 'SLD_SWAP_WARN_PERCENT=%s\n' "$SLD_SWAP_WARN_PERCENT"
+    printf 'SLD_SWAP_ERROR_PERCENT=%s\n' "$SLD_SWAP_ERROR_PERCENT"
     printf "SLD_TAILSCALE='%s'\n" "$(quote_value "$SLD_TAILSCALE")"
     printf "SLD_APT_UPDATES='%s'\n" "$(quote_value "$SLD_APT_UPDATES")"
     printf "SLD_SSH_SERVICE='%s'\n" "$(quote_value "$SLD_SSH_SERVICE")"
@@ -118,8 +124,11 @@ configure() {
   prompt_value 'Confirmation text' "$SLD_CONFIRMATION"; SLD_CONFIRMATION=$prompt_result
   prompt_value 'Login user' "$SLD_ONLY_USER"; SLD_ONLY_USER=$prompt_result
   prompt_value 'Disk warning percent' "$SLD_DISK_WARN_PERCENT"; SLD_DISK_WARN_PERCENT=$prompt_result
+  prompt_value 'Disk error percent' "$SLD_DISK_ERROR_PERCENT"; SLD_DISK_ERROR_PERCENT=$prompt_result
   prompt_value 'Memory warning percent' "$SLD_MEMORY_WARN_PERCENT"; SLD_MEMORY_WARN_PERCENT=$prompt_result
+  prompt_value 'Memory error percent' "$SLD_MEMORY_ERROR_PERCENT"; SLD_MEMORY_ERROR_PERCENT=$prompt_result
   prompt_value 'Swap warning percent' "$SLD_SWAP_WARN_PERCENT"; SLD_SWAP_WARN_PERCENT=$prompt_result
+  prompt_value 'Swap error percent' "$SLD_SWAP_ERROR_PERCENT"; SLD_SWAP_ERROR_PERCENT=$prompt_result
   prompt_value 'Tailscale integration (auto/0/1)' "$SLD_TAILSCALE"; SLD_TAILSCALE=$prompt_result
   prompt_value 'APT update integration (auto/0/1)' "$SLD_APT_UPDATES"; SLD_APT_UPDATES=$prompt_result
   prompt_value 'SSH systemd service' "$SLD_SSH_SERVICE"; SLD_SSH_SERVICE=$prompt_result
@@ -138,8 +147,8 @@ validate() {
   sh -n "$config"
   load_defaults
   case $SLD_AUTO_UPDATE in 0|1) ;; *) printf '%s\n' 'SLD_AUTO_UPDATE must be 0 or 1.' >&2; return 1;; esac
-  for value in "$SLD_DISK_WARN_PERCENT" "$SLD_MEMORY_WARN_PERCENT" "$SLD_SWAP_WARN_PERCENT"; do
-    case $value in ''|*[!0-9]*) printf '%s\n' 'Warning thresholds must be integers.' >&2; return 1;; esac
+  for value in "$SLD_DISK_WARN_PERCENT" "$SLD_DISK_ERROR_PERCENT" "$SLD_MEMORY_WARN_PERCENT" "$SLD_MEMORY_ERROR_PERCENT" "$SLD_SWAP_WARN_PERCENT" "$SLD_SWAP_ERROR_PERCENT"; do
+    case $value in ''|*[!0-9]*) printf '%s\n' 'Resource thresholds must be integers.' >&2; return 1;; esac
   done
   [ -d "$SLD_UPDATE_REPO/.git" ] || { printf 'Not a Git checkout: %s\n' "$SLD_UPDATE_REPO" >&2; return 1; }
   git -C "$SLD_UPDATE_REPO" remote get-url "$SLD_UPDATE_REMOTE" >/dev/null

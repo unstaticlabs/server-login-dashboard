@@ -17,6 +17,7 @@ notices appear only when attention is required.
 
 - A bold production warning and configurable stack name
 - Host, OS/kernel, uptime, load, disk, memory, swap, health, and IP addresses
+- Resource metrics use yellow `WARNING` and red `ERROR` thresholds
 - Previous SSH identity and other active interactive SSH sessions
 - Pending OS package updates, review/apply commands, and reboot requirements
   only when applicable. The dashboard reports OS updates but does not install
@@ -92,6 +93,19 @@ SLD_UPDATE_STATE_DIR='/var/lib/server-login-dashboard'
 The SSH identity is derived from the comment on the matching public key in the
 login user's `authorized_keys`. Use meaningful comments such as
 `alice@work-laptop`.
+
+Resource severity defaults are:
+
+| Metric | Warning (yellow) | Error (red) |
+| --- | ---: | ---: |
+| Load (1 minute) | 1× online CPUs | 2× online CPUs |
+| Disk | 80% | 95% |
+| Memory | 85% | 95% |
+| Swap | 50% | 80% |
+
+Disk, memory, and swap limits are configurable in
+`/etc/server-login-dashboard.conf`. Missing error settings retain the defaults
+above, so existing configurations remain compatible.
 
 ## Requirements and validation
 

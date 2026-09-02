@@ -7,10 +7,13 @@ SLD_CONFIRMATION='Confirm your target before running any command.'
 # Show the dashboard only to this login user. Leave empty for every user.
 SLD_ONLY_USER='root'
 
-# Metrics at or above these percentages are highlighted.
+# Metrics at or above warning percentages are yellow; error percentages are red.
 SLD_DISK_WARN_PERCENT=80
+SLD_DISK_ERROR_PERCENT=95
 SLD_MEMORY_WARN_PERCENT=85
+SLD_MEMORY_ERROR_PERCENT=95
 SLD_SWAP_WARN_PERCENT=50
+SLD_SWAP_ERROR_PERCENT=80
 
 # Optional integrations. "auto" enables them when the command exists.
 SLD_TAILSCALE='auto'

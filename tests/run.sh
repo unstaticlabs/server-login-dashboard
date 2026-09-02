@@ -7,6 +7,7 @@ tree=${2:-$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)}
 package_tests() {
   "$tree/bin/server-login-dashboard-validate" "$tree" >/dev/null
   grep -q "SLD_AUTO_UPDATE=1" "$tree/etc/server-login-dashboard.conf.example"
+  grep -q 'SLD_DISK_ERROR_PERCENT=95' "$tree/etc/server-login-dashboard.conf.example"
   grep -q 'server-login-dashboard-update.timer' "$tree/install.sh"
   printf '%s\n' 'Package tests passed.'
 }
@@ -49,7 +50,33 @@ printf '%s\n' "$dashboard_output" | awk '
   END { if (!found) exit 1 }
 '
 
-printf '%s\n' 'Installation idempotence and one-time notice tests passed.'
+# Resource rows use yellow WARNING and red ERROR levels in a terminal.
+color_config="$fixture/color.conf"
+{
+  printf "SLD_ONLY_USER=''\n"
+  printf 'SLD_DISK_WARN_PERCENT=0\n'
+  printf 'SLD_DISK_ERROR_PERCENT=101\n'
+  printf 'SLD_MEMORY_WARN_PERCENT=0\n'
+  printf 'SLD_MEMORY_ERROR_PERCENT=101\n'
+  printf 'SLD_SWAP_WARN_PERCENT=0\n'
+  printf 'SLD_SWAP_ERROR_PERCENT=101\n'
+  printf "SLD_TAILSCALE='0'\n"
+  printf "SLD_APT_UPDATES='0'\n"
+} > "$color_config"
+color_output=$(script -qec "SLD_CONFIG='$color_config' '$tree/bin/server-login-dashboard'" /dev/null)
+red=$(printf '\033[1;31m')
+yellow=$(printf '\033[1;33m')
+for label in 'Disk /' Memory Swap; do
+  printf '%s\n' "$color_output" | grep -F "$label" | grep -F "$yellow" | grep -F WARNING >/dev/null
+done
+
+sed 's/ERROR_PERCENT=101/ERROR_PERCENT=0/' "$color_config" > "$color_config.error"
+color_output=$(script -qec "SLD_CONFIG='$color_config.error' '$tree/bin/server-login-dashboard'" /dev/null)
+for label in 'Disk /' Memory Swap; do
+  printf '%s\n' "$color_output" | grep -F "$label" | grep -F "$red" | grep -F ERROR >/dev/null
+done
+
+printf '%s\n' 'Installation, dashboard color, and one-time notice tests passed.'
 
 # Exercise the updater against a local bare remote.
 remote="$fixture/remote.git"

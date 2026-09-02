@@ -13,8 +13,11 @@ _sld_config=${SLD_CONFIG:-/etc/server-login-dashboard.conf}
 : "${SLD_CONFIRMATION:=Confirm your target before running any command.}"
 : "${SLD_ONLY_USER=root}"
 : "${SLD_DISK_WARN_PERCENT:=80}"
+: "${SLD_DISK_ERROR_PERCENT:=95}"
 : "${SLD_MEMORY_WARN_PERCENT:=85}"
+: "${SLD_MEMORY_ERROR_PERCENT:=95}"
 : "${SLD_SWAP_WARN_PERCENT:=50}"
+: "${SLD_SWAP_ERROR_PERCENT:=80}"
 : "${SLD_TAILSCALE:=auto}"
 : "${SLD_APT_UPDATES:=auto}"
 : "${_SLD_APT_CHECK_COMMAND:=/usr/lib/update-notifier/apt-check}"
@@ -140,14 +143,27 @@ fi
 
 if [ -t 1 ]; then _sld_red='\033[1;31m'; _sld_yellow='\033[1;33m'; _sld_reset='\033[0m'; else _sld_red=''; _sld_yellow=''; _sld_reset=''; fi
 _sld_metric() {
-  if [ "$3" = 1 ]; then printf '  %-12s %b%s  %s%b\n' "$1" "$_sld_yellow" "$2" "${4:-HIGH}" "$_sld_reset"
-  else printf '  %-12s %s\n' "$1" "$2"; fi
+  case $3 in
+    2) printf '  %-12s %b%s  %s%b\n' "$1" "$_sld_red" "$2" "${4:-ERROR}" "$_sld_reset" ;;
+    1) printf '  %-12s %b%s  %s%b\n' "$1" "$_sld_yellow" "$2" "${4:-WARNING}" "$_sld_reset" ;;
+    *) printf '  %-12s %s\n' "$1" "$2" ;;
+  esac
 }
 
-_sld_load_high=$(awk -v l1="${_sld_load_one:-0}" -v cpu_count="${_sld_cpus:-1}" 'BEGIN {print (l1 >= cpu_count) ? 1 : 0}')
-[ "${_sld_disk_pct:-0}" -ge "$SLD_DISK_WARN_PERCENT" ] 2>/dev/null && _sld_disk_high=1 || _sld_disk_high=0
-[ "${_sld_memory_pct:-0}" -ge "$SLD_MEMORY_WARN_PERCENT" ] 2>/dev/null && _sld_memory_high=1 || _sld_memory_high=0
-[ "${_sld_swap_pct:-0}" -ge "$SLD_SWAP_WARN_PERCENT" ] 2>/dev/null && _sld_swap_high=1 || _sld_swap_high=0
+_sld_percent_level() {
+  if [ "${1:-0}" -ge "$3" ] 2>/dev/null; then printf 2
+  elif [ "${1:-0}" -ge "$2" ] 2>/dev/null; then printf 1
+  else printf 0; fi
+}
+
+_sld_load_level=$(awk -v l1="${_sld_load_one:-0}" -v cpu_count="${_sld_cpus:-1}" 'BEGIN {
+  if (l1 >= cpu_count * 2) print 2
+  else if (l1 >= cpu_count) print 1
+  else print 0
+}')
+_sld_disk_level=$(_sld_percent_level "$_sld_disk_pct" "$SLD_DISK_WARN_PERCENT" "$SLD_DISK_ERROR_PERCENT")
+_sld_memory_level=$(_sld_percent_level "$_sld_memory_pct" "$SLD_MEMORY_WARN_PERCENT" "$SLD_MEMORY_ERROR_PERCENT")
+_sld_swap_level=$(_sld_percent_level "$_sld_swap_pct" "$SLD_SWAP_WARN_PERCENT" "$SLD_SWAP_ERROR_PERCENT")
 
 printf '\n%b  %s  /  %s%b\n' "$_sld_red" "$SLD_ENVIRONMENT" "$SLD_STACK" "$_sld_reset"
 printf '%b  CAUTION: %s%b\n' "$_sld_red" "$SLD_WARNING" "$_sld_reset"
@@ -156,10 +172,10 @@ printf '  %-12s %s\n' Host "$_sld_host"
 printf '  %-12s %s\n' Time "$_sld_time"
 printf '  %-12s %s\n' System "$_sld_os · $_sld_kernel"
 printf '  %-12s %s\n' Uptime "$_sld_uptime"
-_sld_metric Load "$_sld_load" "$_sld_load_high"
-_sld_metric 'Disk /' "$_sld_disk" "$_sld_disk_high"
-_sld_metric Memory "$_sld_memory" "$_sld_memory_high"
-_sld_metric Swap "$_sld_swap" "$_sld_swap_high"
+_sld_metric Load "$_sld_load" "$_sld_load_level"
+_sld_metric 'Disk /' "$_sld_disk" "$_sld_disk_level"
+_sld_metric Memory "$_sld_memory" "$_sld_memory_level"
+_sld_metric Swap "$_sld_swap" "$_sld_swap_level"
 _sld_metric Health "$_sld_health" "$_sld_health_high" CHECK
 printf '  %-12s %s\n' IPs "$_sld_ips"
 _sld_metric 'Previous SSH' "$_sld_previous" "$_sld_previous_high" CHECK
@@ -195,14 +211,14 @@ if [ "${_sld_session_count:-0}" -gt 0 ] 2>/dev/null; then
 fi
 printf '\n'
 
-unset -f _sld_metric _sld_key_identity _sld_notice_gap 2>/dev/null || true
+unset -f _sld_metric _sld_percent_level _sld_key_identity _sld_notice_gap 2>/dev/null || true
 unset _sld_config _sld_user _sld_home _sld_keys _sld_has_tailscale _sld_host _sld_time _sld_os _sld_kernel
 unset _sld_uptime _sld_load _sld_load_one _sld_cpus _sld_disk _sld_disk_pct _sld_memory _sld_memory_pct
 unset _sld_swap _sld_swap_pct _sld_public_v4 _sld_public_v6 _sld_tail_v4 _sld_tail_v6 _sld_ips _sld_tail_status
 unset _sld_zombies _sld_failed _sld_zw _sld_fw _sld_health _sld_health_high _sld_ssh_log _sld_ssh_stamp
 unset _sld_ssh_time _sld_ssh_source _sld_ssh_fp _sld_ssh_identity _sld_ssh_device _sld_previous _sld_previous_high
 unset _sld_current_tty _sld_sessions _sld_session_count _sld_session_people _sld_counts _sld_updates _sld_security
-unset _sld_reboot _sld_red _sld_yellow _sld_reset _sld_load_high _sld_disk_high _sld_memory_high _sld_swap_high word
+unset _sld_reboot _sld_red _sld_yellow _sld_reset _sld_load_level _sld_disk_level _sld_memory_level _sld_swap_level word
 unset _sld_notice_started
 unset _SLD_APT_CHECK_COMMAND
 unset _sld_update_event _sld_consumed _sld_update_kind _sld_update_old _sld_update_new _sld_update_message
