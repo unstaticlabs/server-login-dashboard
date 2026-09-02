@@ -14,7 +14,9 @@ jobs:
     steps:
       - name: Install test dependencies
         run: apt-get update && apt-get install -y git procps iproute2 openssh-client util-linux coreutils systemd shellcheck
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+      - name: Trust the container-mounted workspace
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Lint shell and systemd files
         run: |
           shellcheck -s sh install.sh uninstall.sh bin/server-login-dashboard bin/server-login-dashboard-update bin/server-login-dashboard-validate profile.d/server-login-dashboard.sh tests/run.sh
