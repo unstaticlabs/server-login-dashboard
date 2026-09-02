@@ -9,7 +9,10 @@ notices appear only when attention is required.
 - A bold production warning and configurable stack name
 - Host, OS/kernel, uptime, load, disk, memory, swap, health, and IP addresses
 - Previous SSH identity and other active interactive SSH sessions
-- Pending system updates and reboot requirements only when applicable
+- Pending OS package updates, review/apply commands, and reboot requirements
+  only when applicable. The dashboard reports OS updates but does not install
+  them; the server's separately configured unattended-upgrade policy is
+  unaffected.
 - One-time success or failure results from background dashboard updates
 
 ## Install

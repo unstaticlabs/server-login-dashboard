@@ -33,8 +33,21 @@ test "$checksum" = "$(cksum "$rootfs/etc/server-login-dashboard.conf")"
 state="$fixture/state"
 mkdir -p "$state"
 printf 'success|abc1234|def5678|installed\n' > "$state/update-event"
-SLD_STATE_DIR="$state" SLD_CONFIG="$rootfs/etc/server-login-dashboard.conf" SLD_ONLY_USER='' "$tree/bin/server-login-dashboard" >/dev/null
+apt_check="$fixture/apt-check"
+printf '#!/bin/sh\nprintf "1;0\\n"\n' > "$apt_check"
+chmod +x "$apt_check"
+dashboard_output=$(SLD_STATE_DIR="$state" SLD_CONFIG="$rootfs/etc/server-login-dashboard.conf" SLD_ONLY_USER='' \
+  SLD_APT_UPDATES=1 _SLD_APT_CHECK_COMMAND="$apt_check" "$tree/bin/server-login-dashboard")
 test ! -e "$state/update-event"
+printf '%s\n' "$dashboard_output" | grep -q 'NOTICE: 1 OS PACKAGE UPDATE PENDING'
+printf '%s\n' "$dashboard_output" | grep -q 'Review: apt list --upgradable'
+printf '%s\n' "$dashboard_output" | grep -q 'Apply:  sudo apt update && sudo apt upgrade'
+printf '%s\n' "$dashboard_output" | grep -q 'This dashboard reports OS updates; it does not install them.'
+printf '%s\n' "$dashboard_output" | awk '
+  /This dashboard reports OS updates; it does not install them\./ { update_end=NR }
+  /INFO: LOGIN DASHBOARD UPDATED/ { if (NR != update_end + 2) exit 1; found=1 }
+  END { if (!found) exit 1 }
+'
 
 printf '%s\n' 'Installation idempotence and one-time notice tests passed.'
 

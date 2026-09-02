@@ -17,6 +17,7 @@ _sld_config=${SLD_CONFIG:-/etc/server-login-dashboard.conf}
 : "${SLD_SWAP_WARN_PERCENT:=50}"
 : "${SLD_TAILSCALE:=auto}"
 : "${SLD_APT_UPDATES:=auto}"
+: "${_SLD_APT_CHECK_COMMAND:=/usr/lib/update-notifier/apt-check}"
 : "${SLD_SSH_SERVICE:=ssh.service}"
 : "${SLD_AUTHORIZED_KEYS:=%h/.ssh/authorized_keys}"
 : "${SLD_UPDATE_STATE_DIR:=/var/lib/server-login-dashboard}"
@@ -119,8 +120,8 @@ fi
 
 _sld_updates=0
 _sld_security=0
-if [ "$SLD_APT_UPDATES" = 1 ] || { [ "$SLD_APT_UPDATES" = auto ] && [ -x /usr/lib/update-notifier/apt-check ]; }; then
-  _sld_counts=$(/usr/lib/update-notifier/apt-check 2>&1)
+if [ "$SLD_APT_UPDATES" = 1 ] || { [ "$SLD_APT_UPDATES" = auto ] && [ -x "$_SLD_APT_CHECK_COMMAND" ]; }; then
+  _sld_counts=$("$_SLD_APT_CHECK_COMMAND" 2>&1)
   _sld_updates=${_sld_counts%%;*}
   _sld_security=${_sld_counts##*;}
 fi
@@ -164,26 +165,37 @@ printf '  %-12s %s\n' IPs "$_sld_ips"
 _sld_metric 'Previous SSH' "$_sld_previous" "$_sld_previous_high" CHECK
 
 if [ "${_sld_updates:-0}" -gt 0 ] 2>/dev/null || [ "$_sld_reboot" -eq 1 ] || [ "${_sld_session_count:-0}" -gt 0 ] 2>/dev/null || [ -n "$_sld_update_kind" ]; then printf '\n'; fi
+_sld_notice_started=0
+_sld_notice_gap() {
+  if [ "$_sld_notice_started" -eq 1 ]; then printf '\n'; else _sld_notice_started=1; fi
+}
 if [ "${_sld_updates:-0}" -gt 0 ] 2>/dev/null; then
+  _sld_notice_gap
   [ "$_sld_updates" -eq 1 ] && word=UPDATE || word=UPDATES
-  if [ "${_sld_security:-0}" -gt 0 ] 2>/dev/null; then printf '%b  WARNING: %s SYSTEM %s PENDING — %s SECURITY%b\n' "$_sld_red" "$_sld_updates" "$word" "$_sld_security" "$_sld_reset"
-  else printf '%b  NOTICE: %s SYSTEM %s PENDING%b\n' "$_sld_yellow" "$_sld_updates" "$word" "$_sld_reset"; fi
+  if [ "${_sld_security:-0}" -gt 0 ] 2>/dev/null; then printf '%b  WARNING: %s OS PACKAGE %s PENDING — %s SECURITY%b\n' "$_sld_red" "$_sld_updates" "$word" "$_sld_security" "$_sld_reset"
+  else printf '%b  NOTICE: %s OS PACKAGE %s PENDING%b\n' "$_sld_yellow" "$_sld_updates" "$word" "$_sld_reset"; fi
+  printf '%b  Review: apt list --upgradable%b\n' "$_sld_yellow" "$_sld_reset"
+  printf '%b  Apply:  sudo apt update && sudo apt upgrade%b\n' "$_sld_yellow" "$_sld_reset"
+  printf '%b  This dashboard reports OS updates; it does not install them.%b\n' "$_sld_yellow" "$_sld_reset"
 fi
-[ "$_sld_reboot" -eq 1 ] && printf '%b  WARNING: SYSTEM REBOOT REQUIRED%b\n' "$_sld_red" "$_sld_reset"
+[ "$_sld_reboot" -eq 1 ] && { _sld_notice_gap; printf '%b  WARNING: SYSTEM REBOOT REQUIRED%b\n' "$_sld_red" "$_sld_reset"; }
 if [ "$_sld_update_kind" = success ]; then
+  _sld_notice_gap
   printf '%b  INFO: LOGIN DASHBOARD UPDATED — %s → %s%b\n' "$_sld_yellow" "$_sld_update_old" "$_sld_update_new" "$_sld_reset"
 elif [ "$_sld_update_kind" = failure ]; then
+  _sld_notice_gap
   printf '%b  WARNING: LOGIN DASHBOARD UPDATE FAILED — %s%b\n' "$_sld_red" "$_sld_update_message" "$_sld_reset"
   printf '%b  Run: cd %s && sudo ./install.sh update%b\n' "$_sld_red" "${SLD_UPDATE_REPO:-/opt/server-login-dashboard}" "$_sld_reset"
 fi
 if [ "${_sld_session_count:-0}" -gt 0 ] 2>/dev/null; then
+  _sld_notice_gap
   [ "$_sld_session_count" -eq 1 ] && word=SESSION || word=SESSIONS
   printf '%b  WARNING: %s OTHER INTERACTIVE %s ACTIVE — %s%b\n' "$_sld_red" "$_sld_session_count" "$word" "$_sld_session_people" "$_sld_reset"
   printf '%b  Someone else may be making production changes right now.%b\n' "$_sld_red" "$_sld_reset"
 fi
 printf '\n'
 
-unset -f _sld_metric _sld_key_identity 2>/dev/null || true
+unset -f _sld_metric _sld_key_identity _sld_notice_gap 2>/dev/null || true
 unset _sld_config _sld_user _sld_home _sld_keys _sld_has_tailscale _sld_host _sld_time _sld_os _sld_kernel
 unset _sld_uptime _sld_load _sld_load_one _sld_cpus _sld_disk _sld_disk_pct _sld_memory _sld_memory_pct
 unset _sld_swap _sld_swap_pct _sld_public_v4 _sld_public_v6 _sld_tail_v4 _sld_tail_v6 _sld_ips _sld_tail_status
@@ -191,4 +203,6 @@ unset _sld_zombies _sld_failed _sld_zw _sld_fw _sld_health _sld_health_high _sld
 unset _sld_ssh_time _sld_ssh_source _sld_ssh_fp _sld_ssh_identity _sld_ssh_device _sld_previous _sld_previous_high
 unset _sld_current_tty _sld_sessions _sld_session_count _sld_session_people _sld_counts _sld_updates _sld_security
 unset _sld_reboot _sld_red _sld_yellow _sld_reset _sld_load_high _sld_disk_high _sld_memory_high _sld_swap_high word
+unset _sld_notice_started
+unset _SLD_APT_CHECK_COMMAND
 unset _sld_update_event _sld_consumed _sld_update_kind _sld_update_old _sld_update_new _sld_update_message
