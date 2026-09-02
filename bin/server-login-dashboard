@@ -1,0 +1,173 @@
+#!/bin/sh
+
+# A compact, attention-oriented login dashboard for Linux administration hosts.
+# It is intended to be sourced from /etc/profile.d, but can also be run directly.
+
+_sld_config=${SLD_CONFIG:-/etc/server-login-dashboard.conf}
+[ -r "$_sld_config" ] && . "$_sld_config"
+
+: "${SLD_ENVIRONMENT:=PRODUCTION}"
+: "${SLD_STACK:=SERVER}"
+: "${SLD_WARNING:=Changes here may affect live users and data.}"
+: "${SLD_CONFIRMATION:=Confirm your target before running any command.}"
+: "${SLD_ONLY_USER=root}"
+: "${SLD_DISK_WARN_PERCENT:=80}"
+: "${SLD_MEMORY_WARN_PERCENT:=85}"
+: "${SLD_SWAP_WARN_PERCENT:=50}"
+: "${SLD_TAILSCALE:=auto}"
+: "${SLD_APT_UPDATES:=auto}"
+: "${SLD_SSH_SERVICE:=ssh.service}"
+: "${SLD_AUTHORIZED_KEYS:=%h/.ssh/authorized_keys}"
+
+_sld_user=$(id -un 2>/dev/null || printf unknown)
+[ -z "$SLD_ONLY_USER" ] || [ "$_sld_user" = "$SLD_ONLY_USER" ] || return 0 2>/dev/null || exit 0
+
+_sld_home=${HOME:-}
+_sld_keys=$(printf '%s' "$SLD_AUTHORIZED_KEYS" | sed "s|%h|$_sld_home|g")
+_sld_has_tailscale=0
+if [ "$SLD_TAILSCALE" = 1 ] || { [ "$SLD_TAILSCALE" = auto ] && command -v tailscale >/dev/null 2>&1; }; then
+  _sld_has_tailscale=1
+fi
+
+_sld_host=$(hostname -s 2>/dev/null || printf unknown)
+_sld_time=$(date '+%Y-%m-%d %H:%M:%S %Z')
+_sld_os=$(. /etc/os-release 2>/dev/null; printf '%s' "${PRETTY_NAME:-unknown Linux}")
+_sld_kernel=$(uname -r 2>/dev/null || printf 'unknown kernel')
+_sld_uptime=$(uptime -p 2>/dev/null | sed 's/^up //' || printf unknown)
+_sld_load=$(awk '{print $1 " / " $2 " / " $3}' /proc/loadavg 2>/dev/null || printf unknown)
+_sld_load_one=$(awk '{print $1}' /proc/loadavg 2>/dev/null)
+_sld_cpus=$(getconf _NPROCESSORS_ONLN 2>/dev/null || printf 1)
+_sld_disk=$(LC_ALL=C df -hP / 2>/dev/null | awk 'NR == 2 {print $3 " / " $2 " (" $5 ")"}')
+_sld_disk_pct=$(LC_ALL=C df -P / 2>/dev/null | awk 'NR == 2 {gsub(/%/, "", $5); print $5}')
+_sld_memory=$(LC_ALL=C free -h 2>/dev/null | awk '/^Mem:/ {printf "%s / %s (%.0f%%)", $3, $2, $3 * 100 / $2}')
+_sld_memory_pct=$(LC_ALL=C free -b 2>/dev/null | awk '/^Mem:/ {printf "%.0f", $3 * 100 / $2}')
+_sld_swap=$(LC_ALL=C free -h 2>/dev/null | awk '/^Swap:/ {if ($2 == "0B") print "disabled"; else printf "%s / %s (%.0f%%)", $3, $2, $3 * 100 / $2}')
+_sld_swap_pct=$(LC_ALL=C free -b 2>/dev/null | awk '/^Swap:/ {if ($2 == 0) print 0; else printf "%.0f", $3 * 100 / $2}')
+
+_sld_public_v4=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i=1;i<=NF;i++) if ($i=="src") {print $(i+1); exit}}')
+_sld_public_v6=$(ip -o -6 addr show scope global 2>/dev/null | awk '$2 != "tailscale0" {split($4,a,"/"); print a[1]; exit}')
+_sld_ips="public ${_sld_public_v4:---}"
+[ -z "$_sld_public_v6" ] || _sld_ips="$_sld_ips · $_sld_public_v6"
+if [ "$_sld_has_tailscale" -eq 1 ]; then
+  _sld_tail_v4=$(tailscale ip -4 2>/dev/null | head -n 1)
+  _sld_tail_v6=$(tailscale ip -6 2>/dev/null | head -n 1)
+  _sld_ips="$_sld_ips | tailnet ${_sld_tail_v4:---}"
+  [ -z "$_sld_tail_v6" ] || _sld_ips="$_sld_ips · $_sld_tail_v6"
+  _sld_tail_status=$(tailscale status 2>/dev/null)
+else
+  _sld_tail_status=''
+fi
+
+_sld_zombies=$(ps -eo stat= 2>/dev/null | awk '/^Z/ {n++} END {print n+0}')
+_sld_failed=$(systemctl --failed --no-legend --plain 2>/dev/null | awk 'NF {n++} END {print n+0}')
+[ "${_sld_zombies:-0}" -eq 1 ] 2>/dev/null && _sld_zw=zombie || _sld_zw=zombies
+[ "${_sld_failed:-0}" -eq 1 ] 2>/dev/null && _sld_fw='failed service' || _sld_fw='failed services'
+_sld_health="${_sld_zombies:-0} $_sld_zw · ${_sld_failed:-0} $_sld_fw"
+[ "${_sld_zombies:-0}" -gt 0 ] 2>/dev/null || [ "${_sld_failed:-0}" -gt 0 ] 2>/dev/null && _sld_health_high=1 || _sld_health_high=0
+
+_sld_key_identity() {
+  ssh-keygen -lf "$_sld_keys" 2>/dev/null | awk -v fp="$1" '$2==fp {$1=$2=""; sub(/^[[:space:]]+/,""); sub(/ \([^)]*\)$/,""); print; exit}'
+}
+
+# The current authentication is normally the newest event, so use the one before it.
+_sld_ssh_log=$(journalctl -u "$SLD_SSH_SERVICE" --no-pager -o short-iso -g 'Accepted publickey for' -n 2 2>/dev/null | sed -n '2p')
+if [ -z "$_sld_ssh_log" ] && [ -z "${SSH_CONNECTION:-}" ]; then
+  _sld_ssh_log=$(journalctl -u "$SLD_SSH_SERVICE" --no-pager -o short-iso -g 'Accepted publickey for' -n 1 2>/dev/null | sed -n '1p')
+fi
+_sld_previous_high=0
+if [ -n "$_sld_ssh_log" ]; then
+  _sld_ssh_stamp=${_sld_ssh_log%% *}
+  _sld_ssh_time=$(date -d "$_sld_ssh_stamp" '+%Y-%m-%d %H:%M %Z' 2>/dev/null || printf '%s' "$_sld_ssh_stamp")
+  _sld_ssh_source=$(printf '%s\n' "$_sld_ssh_log" | awk '{for(i=1;i<=NF;i++) if($i=="from") {print $(i+1); exit}}')
+  _sld_ssh_fp=$(printf '%s\n' "$_sld_ssh_log" | awk '{for(i=1;i<=NF;i++) if($i~/^SHA256:/) {print $i; exit}}')
+  _sld_ssh_identity=$(_sld_key_identity "$_sld_ssh_fp")
+  _sld_ssh_device=$(printf '%s\n' "$_sld_tail_status" | awk -v source="$_sld_ssh_source" '$1==source {print $2; exit}')
+  [ -n "$_sld_ssh_identity" ] || { _sld_ssh_identity='UNKNOWN KEY'; _sld_previous_high=1; }
+  if [ "$_sld_has_tailscale" -eq 1 ]; then
+    [ -n "$_sld_ssh_device" ] || { _sld_ssh_device='outside tailnet'; _sld_previous_high=1; }
+  else
+    _sld_ssh_device='SSH'
+  fi
+  _sld_previous="$_sld_ssh_time · $_sld_ssh_identity · $_sld_ssh_device ($_sld_ssh_source)"
+else
+  _sld_previous='unavailable'
+  _sld_previous_high=1
+fi
+
+# Find other interactive SSH shells. This intentionally does not count noninteractive jobs.
+_sld_current_tty=${SSH_TTY#/dev/}
+_sld_sessions=$(ps -eo pid=,tty=,args= 2>/dev/null | awk -v current="$_sld_current_tty" '$2~/^pts\// && $2!=current && $3~/^-(ba|z|k)?sh$/ {print $1"|"$2}')
+_sld_session_count=$(printf '%s\n' "$_sld_sessions" | awk 'NF {n++} END {print n+0}')
+if [ "${_sld_session_count:-0}" -gt 0 ] 2>/dev/null; then
+  _sld_session_people=$(printf '%s\n' "$_sld_sessions" | while IFS='|' read -r shell_pid tty; do
+    [ -n "$shell_pid" ] || continue
+    sshd_child=$(ps -o ppid= -p "$shell_pid" 2>/dev/null | tr -d ' ')
+    sshd_priv=$(ps -o ppid= -p "$sshd_child" 2>/dev/null | tr -d ' ')
+    log=$(journalctl _PID="$sshd_priv" --no-pager -o short-iso -g 'Accepted publickey for' -n 1 2>/dev/null | sed -n '1p')
+    source=$(printf '%s\n' "$log" | awk '{for(i=1;i<=NF;i++) if($i=="from") {print $(i+1); exit}}')
+    fp=$(printf '%s\n' "$log" | awk '{for(i=1;i<=NF;i++) if($i~/^SHA256:/) {print $i; exit}}')
+    identity=$(_sld_key_identity "$fp")
+    device=$(printf '%s\n' "$_sld_tail_status" | awk -v source="$source" '$1==source {print $2; exit}')
+    [ -n "$identity" ] || identity='unknown key'
+    [ -n "$device" ] || device=${source:-$tty}
+    printf '%s|%s\n' "$identity" "$device"
+  done | sort | uniq -c | awk '{n=$1; sub(/^[[:space:]]*[0-9]+[[:space:]]+/,""); split($0,p,"|"); printf "%s%s on %s",sep,p[1],p[2]; if(n>1) printf " ×%d",n; sep="; "}')
+fi
+
+_sld_updates=0
+_sld_security=0
+if [ "$SLD_APT_UPDATES" = 1 ] || { [ "$SLD_APT_UPDATES" = auto ] && [ -x /usr/lib/update-notifier/apt-check ]; }; then
+  _sld_counts=$(/usr/lib/update-notifier/apt-check 2>&1)
+  _sld_updates=${_sld_counts%%;*}
+  _sld_security=${_sld_counts##*;}
+fi
+[ -f /var/run/reboot-required ] && _sld_reboot=1 || _sld_reboot=0
+
+if [ -t 1 ]; then _sld_red='\033[1;31m'; _sld_yellow='\033[1;33m'; _sld_reset='\033[0m'; else _sld_red=''; _sld_yellow=''; _sld_reset=''; fi
+_sld_metric() {
+  if [ "$3" = 1 ]; then printf '  %-12s %b%s  %s%b\n' "$1" "$_sld_yellow" "$2" "${4:-HIGH}" "$_sld_reset"
+  else printf '  %-12s %s\n' "$1" "$2"; fi
+}
+
+_sld_load_high=$(awk -v l1="${_sld_load_one:-0}" -v cpu_count="${_sld_cpus:-1}" 'BEGIN {print (l1 >= cpu_count) ? 1 : 0}')
+[ "${_sld_disk_pct:-0}" -ge "$SLD_DISK_WARN_PERCENT" ] 2>/dev/null && _sld_disk_high=1 || _sld_disk_high=0
+[ "${_sld_memory_pct:-0}" -ge "$SLD_MEMORY_WARN_PERCENT" ] 2>/dev/null && _sld_memory_high=1 || _sld_memory_high=0
+[ "${_sld_swap_pct:-0}" -ge "$SLD_SWAP_WARN_PERCENT" ] 2>/dev/null && _sld_swap_high=1 || _sld_swap_high=0
+
+printf '\n%b  %s  /  %s%b\n' "$_sld_red" "$SLD_ENVIRONMENT" "$SLD_STACK" "$_sld_reset"
+printf '%b  CAUTION: %s%b\n' "$_sld_red" "$SLD_WARNING" "$_sld_reset"
+printf '%b  %s%b\n\n' "$_sld_red" "$SLD_CONFIRMATION" "$_sld_reset"
+printf '  %-12s %s\n' Host "$_sld_host"
+printf '  %-12s %s\n' Time "$_sld_time"
+printf '  %-12s %s\n' System "$_sld_os · $_sld_kernel"
+printf '  %-12s %s\n' Uptime "$_sld_uptime"
+_sld_metric Load "$_sld_load" "$_sld_load_high"
+_sld_metric 'Disk /' "$_sld_disk" "$_sld_disk_high"
+_sld_metric Memory "$_sld_memory" "$_sld_memory_high"
+_sld_metric Swap "$_sld_swap" "$_sld_swap_high"
+_sld_metric Health "$_sld_health" "$_sld_health_high" CHECK
+printf '  %-12s %s\n' IPs "$_sld_ips"
+_sld_metric 'Previous SSH' "$_sld_previous" "$_sld_previous_high" CHECK
+
+if [ "${_sld_updates:-0}" -gt 0 ] 2>/dev/null || [ "$_sld_reboot" -eq 1 ] || [ "${_sld_session_count:-0}" -gt 0 ] 2>/dev/null; then printf '\n'; fi
+if [ "${_sld_updates:-0}" -gt 0 ] 2>/dev/null; then
+  [ "$_sld_updates" -eq 1 ] && word=UPDATE || word=UPDATES
+  if [ "${_sld_security:-0}" -gt 0 ] 2>/dev/null; then printf '%b  WARNING: %s SYSTEM %s PENDING — %s SECURITY%b\n' "$_sld_red" "$_sld_updates" "$word" "$_sld_security" "$_sld_reset"
+  else printf '%b  NOTICE: %s SYSTEM %s PENDING%b\n' "$_sld_yellow" "$_sld_updates" "$word" "$_sld_reset"; fi
+fi
+[ "$_sld_reboot" -eq 1 ] && printf '%b  WARNING: SYSTEM REBOOT REQUIRED%b\n' "$_sld_red" "$_sld_reset"
+if [ "${_sld_session_count:-0}" -gt 0 ] 2>/dev/null; then
+  [ "$_sld_session_count" -eq 1 ] && word=SESSION || word=SESSIONS
+  printf '%b  WARNING: %s OTHER INTERACTIVE %s ACTIVE — %s%b\n' "$_sld_red" "$_sld_session_count" "$word" "$_sld_session_people" "$_sld_reset"
+  printf '%b  Someone else may be making production changes right now.%b\n' "$_sld_red" "$_sld_reset"
+fi
+printf '\n'
+
+unset -f _sld_metric _sld_key_identity 2>/dev/null || true
+unset _sld_config _sld_user _sld_home _sld_keys _sld_has_tailscale _sld_host _sld_time _sld_os _sld_kernel
+unset _sld_uptime _sld_load _sld_load_one _sld_cpus _sld_disk _sld_disk_pct _sld_memory _sld_memory_pct
+unset _sld_swap _sld_swap_pct _sld_public_v4 _sld_public_v6 _sld_tail_v4 _sld_tail_v6 _sld_ips _sld_tail_status
+unset _sld_zombies _sld_failed _sld_zw _sld_fw _sld_health _sld_health_high _sld_ssh_log _sld_ssh_stamp
+unset _sld_ssh_time _sld_ssh_source _sld_ssh_fp _sld_ssh_identity _sld_ssh_device _sld_previous _sld_previous_high
+unset _sld_current_tty _sld_sessions _sld_session_count _sld_session_people _sld_counts _sld_updates _sld_security
+unset _sld_reboot _sld_red _sld_yellow _sld_reset _sld_load_high _sld_disk_high _sld_memory_high _sld_swap_high word

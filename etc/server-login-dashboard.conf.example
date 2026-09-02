@@ -1,0 +1,24 @@
+# Server identity shown in the warning banner.
+SLD_ENVIRONMENT='PRODUCTION'
+SLD_STACK='ODOO STACK'
+SLD_WARNING='Changes here affect live users and data.'
+SLD_CONFIRMATION='Confirm your target before running any command.'
+
+# Show the dashboard only to this login user. Leave empty for every user.
+SLD_ONLY_USER='root'
+
+# Metrics at or above these percentages are highlighted.
+SLD_DISK_WARN_PERCENT=80
+SLD_MEMORY_WARN_PERCENT=85
+SLD_SWAP_WARN_PERCENT=50
+
+# Optional integrations. "auto" enables them when the command exists.
+SLD_TAILSCALE='auto'
+SLD_APT_UPDATES='auto'
+
+# Ubuntu normally uses ssh.service. Debian variants may use sshd.service.
+SLD_SSH_SERVICE='ssh.service'
+
+# Used to turn SSH key fingerprints into human-readable key comments.
+# %h expands to the current user's home directory.
+SLD_AUTHORIZED_KEYS='%h/.ssh/authorized_keys'
