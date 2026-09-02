@@ -1,0 +1,41 @@
+{
+  "skill": "preserving-decision-rationale",
+  "cases": [
+    {
+      "id": "captures-durable-rationale",
+      "kind": "should-trigger",
+      "prompt": "Record why this service keeps an internal queue instead of publishing directly to the vendor API, including when we should revisit it.",
+      "expect": [
+        "The repository's existing decision-documentation convention is used when available.",
+        "Context, alternatives, rationale, consequences, evidence, and revisit conditions are captured.",
+        "Unverified rationale is not presented as fact."
+      ]
+    },
+    {
+      "id": "does-not-own-session-state",
+      "kind": "should-not-trigger",
+      "prompt": "Save what I completed today, the dirty files, and the next command for tomorrow's agent.",
+      "expect": [
+        "The request routes to session-handoff creation rather than durable decision documentation."
+      ]
+    },
+    {
+      "id": "recovers-with-uncertainty",
+      "kind": "ambiguous",
+      "prompt": "Why does this old retry loop exist? There is no comment and the original author is unavailable.",
+      "expect": [
+        "History, issues, tests, and code evidence are inspected.",
+        "Historical fact is separated from present-day inference and unknowns.",
+        "A current tradeoff analysis is not misrepresented as recovered intent."
+      ]
+    },
+    {
+      "id": "does-not-own-general-lesson",
+      "kind": "should-not-trigger",
+      "prompt": "What reusable engineering lesson does this queue incident teach across all our projects?",
+      "expect": [
+        "The request routes to engineering-lesson extraction."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "skill": "committing-and-syncing-work",
+  "cases": [
+    {
+      "id": "creates-atomic-conventional-commits",
+      "kind": "should-trigger",
+      "prompt": "Commit my changes. The working tree contains an authentication fix, its tests, and an unrelated README rewrite, so split the work cleanly.",
+      "expect": [
+        "The full working tree and staged diffs are inspected.",
+        "The fix and its tests remain together while the unrelated documentation becomes a separate commit.",
+        "Only intended changes are staged.",
+        "Messages follow Conventional Commits in concise plain language."
+      ]
+    },
+    {
+      "id": "does-not-autocommit-when-disabled",
+      "kind": "should-not-trigger",
+      "prompt": "Implement this parser change. This repository's policy sets auto_commit to false, and I did not ask for a commit.",
+      "expect": [
+        "The implementation is completed without creating a commit or changing the saved policy."
+      ]
+    },
+    {
+      "id": "persists-first-use-choice",
+      "kind": "ambiguous",
+      "prompt": "We finished a verified change, but this repository has no `.usl/agent-policy.json` yet.",
+      "expect": [
+        "The agent asks once for auto_commit and one of the three auto_push modes before automatic Git mutation.",
+        "The answered preference is persisted with schema version 1.",
+        "Preferences from other repositories are not assumed."
+      ]
+    },
+    {
+      "id": "holds-default-branch-push",
+      "kind": "ambiguous",
+      "prompt": "The commit is ready on main and the repository policy says auto_push is non-default.",
+      "expect": [
+        "The local commit may follow auto_commit policy, but main is not pushed automatically.",
+        "The unpushed state is reported without changing policy."
+      ]
+    },
+    {
+      "id": "stops-on-diverged-remote",
+      "kind": "ambiguous",
+      "prompt": "Auto-push is enabled, but fetch shows the upstream feature branch has commits we do not have.",
+      "expect": [
+        "The push stops before rejection or history rewriting.",
+        "No merge, rebase, reset, or force-push is performed silently.",
+        "The divergence and required decision are reported."
+      ]
+    }
+  ]
+}
