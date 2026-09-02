@@ -1,0 +1,26 @@
+#!/bin/sh
+set -eu
+
+tree=${1:-$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)}
+
+required='bin/server-login-dashboard bin/server-login-dashboard-update install.sh uninstall.sh profile.d/server-login-dashboard.sh systemd/server-login-dashboard-update.service systemd/server-login-dashboard-update.timer'
+for path in $required; do
+  if [ ! -f "$tree/$path" ]; then
+    printf 'Missing required file: %s\n' "$path" >&2
+    exit 1
+  fi
+done
+
+find "$tree/bin" "$tree/profile.d" "$tree/tests" -type f \( -name '*.sh' -o -path "$tree/bin/*" \) 2>/dev/null |
+while IFS= read -r path; do
+  sh -n "$path"
+done
+sh -n "$tree/install.sh"
+sh -n "$tree/uninstall.sh"
+
+grep -q '^ExecStart=/usr/local/sbin/server-login-dashboard-update$' "$tree/systemd/server-login-dashboard-update.service"
+grep -q '^OnCalendar=daily$' "$tree/systemd/server-login-dashboard-update.timer"
+grep -q '^RandomizedDelaySec=2h$' "$tree/systemd/server-login-dashboard-update.timer"
+grep -q '^Persistent=true$' "$tree/systemd/server-login-dashboard-update.timer"
+
+printf 'Package validation passed.\n'

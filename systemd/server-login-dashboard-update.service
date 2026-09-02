@@ -1,0 +1,12 @@
+[Unit]
+Description=Update the server login dashboard
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/local/sbin/server-login-dashboard-update
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

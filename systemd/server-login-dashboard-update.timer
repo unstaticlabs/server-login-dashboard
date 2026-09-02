@@ -1,0 +1,10 @@
+[Unit]
+Description=Check daily for server login dashboard updates
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=2h
+Persistent=true
+
+[Install]
+WantedBy=timers.target

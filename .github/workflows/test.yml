@@ -1,0 +1,24 @@
+name: test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  shell-tests:
+    strategy:
+      matrix:
+        image: [ubuntu:latest, debian:stable]
+    runs-on: ubuntu-latest
+    container: ${{ matrix.image }}
+    steps:
+      - name: Install test dependencies
+        run: apt-get update && apt-get install -y git procps iproute2 openssh-client util-linux coreutils systemd shellcheck
+      - uses: actions/checkout@v4
+      - name: Lint shell and systemd files
+        run: |
+          shellcheck -s sh install.sh uninstall.sh bin/server-login-dashboard bin/server-login-dashboard-update bin/server-login-dashboard-validate profile.d/server-login-dashboard.sh tests/run.sh
+          install -m 0755 bin/server-login-dashboard-update /usr/local/sbin/server-login-dashboard-update
+          systemd-analyze verify systemd/server-login-dashboard-update.service systemd/server-login-dashboard-update.timer
+      - name: Run tests
+        run: ./tests/run.sh

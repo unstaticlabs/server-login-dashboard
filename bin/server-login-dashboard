@@ -3,6 +3,7 @@
 # A compact, attention-oriented login dashboard for Linux administration hosts.
 # It is intended to be sourced from /etc/profile.d, but can also be run directly.
 
+# shellcheck disable=SC1090
 _sld_config=${SLD_CONFIG:-/etc/server-login-dashboard.conf}
 [ -r "$_sld_config" ] && . "$_sld_config"
 
@@ -18,6 +19,7 @@ _sld_config=${SLD_CONFIG:-/etc/server-login-dashboard.conf}
 : "${SLD_APT_UPDATES:=auto}"
 : "${SLD_SSH_SERVICE:=ssh.service}"
 : "${SLD_AUTHORIZED_KEYS:=%h/.ssh/authorized_keys}"
+: "${SLD_UPDATE_STATE_DIR:=/var/lib/server-login-dashboard}"
 
 _sld_user=$(id -un 2>/dev/null || printf unknown)
 [ -z "$SLD_ONLY_USER" ] || [ "$_sld_user" = "$SLD_ONLY_USER" ] || return 0 2>/dev/null || exit 0
@@ -31,6 +33,7 @@ fi
 
 _sld_host=$(hostname -s 2>/dev/null || printf unknown)
 _sld_time=$(date '+%Y-%m-%d %H:%M:%S %Z')
+# shellcheck disable=SC1091
 _sld_os=$(. /etc/os-release 2>/dev/null; printf '%s' "${PRETTY_NAME:-unknown Linux}")
 _sld_kernel=$(uname -r 2>/dev/null || printf 'unknown kernel')
 _sld_uptime=$(uptime -p 2>/dev/null | sed 's/^up //' || printf unknown)
@@ -123,6 +126,17 @@ if [ "$SLD_APT_UPDATES" = 1 ] || { [ "$SLD_APT_UPDATES" = auto ] && [ -x /usr/li
 fi
 [ -f /var/run/reboot-required ] && _sld_reboot=1 || _sld_reboot=0
 
+# Update checks happen in the background. Login only consumes a cached event.
+_sld_update_event=${SLD_STATE_DIR:-$SLD_UPDATE_STATE_DIR}/update-event
+_sld_update_kind=''
+if [ -r "$_sld_update_event" ]; then
+  _sld_consumed="$_sld_update_event.$$"
+  if mv "$_sld_update_event" "$_sld_consumed" 2>/dev/null; then
+    IFS='|' read -r _sld_update_kind _sld_update_old _sld_update_new _sld_update_message < "$_sld_consumed" || true
+    rm -f "$_sld_consumed"
+  fi
+fi
+
 if [ -t 1 ]; then _sld_red='\033[1;31m'; _sld_yellow='\033[1;33m'; _sld_reset='\033[0m'; else _sld_red=''; _sld_yellow=''; _sld_reset=''; fi
 _sld_metric() {
   if [ "$3" = 1 ]; then printf '  %-12s %b%s  %s%b\n' "$1" "$_sld_yellow" "$2" "${4:-HIGH}" "$_sld_reset"
@@ -149,13 +163,19 @@ _sld_metric Health "$_sld_health" "$_sld_health_high" CHECK
 printf '  %-12s %s\n' IPs "$_sld_ips"
 _sld_metric 'Previous SSH' "$_sld_previous" "$_sld_previous_high" CHECK
 
-if [ "${_sld_updates:-0}" -gt 0 ] 2>/dev/null || [ "$_sld_reboot" -eq 1 ] || [ "${_sld_session_count:-0}" -gt 0 ] 2>/dev/null; then printf '\n'; fi
+if [ "${_sld_updates:-0}" -gt 0 ] 2>/dev/null || [ "$_sld_reboot" -eq 1 ] || [ "${_sld_session_count:-0}" -gt 0 ] 2>/dev/null || [ -n "$_sld_update_kind" ]; then printf '\n'; fi
 if [ "${_sld_updates:-0}" -gt 0 ] 2>/dev/null; then
   [ "$_sld_updates" -eq 1 ] && word=UPDATE || word=UPDATES
   if [ "${_sld_security:-0}" -gt 0 ] 2>/dev/null; then printf '%b  WARNING: %s SYSTEM %s PENDING — %s SECURITY%b\n' "$_sld_red" "$_sld_updates" "$word" "$_sld_security" "$_sld_reset"
   else printf '%b  NOTICE: %s SYSTEM %s PENDING%b\n' "$_sld_yellow" "$_sld_updates" "$word" "$_sld_reset"; fi
 fi
 [ "$_sld_reboot" -eq 1 ] && printf '%b  WARNING: SYSTEM REBOOT REQUIRED%b\n' "$_sld_red" "$_sld_reset"
+if [ "$_sld_update_kind" = success ]; then
+  printf '%b  INFO: LOGIN DASHBOARD UPDATED — %s → %s%b\n' "$_sld_yellow" "$_sld_update_old" "$_sld_update_new" "$_sld_reset"
+elif [ "$_sld_update_kind" = failure ]; then
+  printf '%b  WARNING: LOGIN DASHBOARD UPDATE FAILED — %s%b\n' "$_sld_red" "$_sld_update_message" "$_sld_reset"
+  printf '%b  Run: cd %s && sudo ./install.sh update%b\n' "$_sld_red" "${SLD_UPDATE_REPO:-/opt/server-login-dashboard}" "$_sld_reset"
+fi
 if [ "${_sld_session_count:-0}" -gt 0 ] 2>/dev/null; then
   [ "$_sld_session_count" -eq 1 ] && word=SESSION || word=SESSIONS
   printf '%b  WARNING: %s OTHER INTERACTIVE %s ACTIVE — %s%b\n' "$_sld_red" "$_sld_session_count" "$word" "$_sld_session_people" "$_sld_reset"
@@ -171,3 +191,4 @@ unset _sld_zombies _sld_failed _sld_zw _sld_fw _sld_health _sld_health_high _sld
 unset _sld_ssh_time _sld_ssh_source _sld_ssh_fp _sld_ssh_identity _sld_ssh_device _sld_previous _sld_previous_high
 unset _sld_current_tty _sld_sessions _sld_session_count _sld_session_people _sld_counts _sld_updates _sld_security
 unset _sld_reboot _sld_red _sld_yellow _sld_reset _sld_load_high _sld_disk_high _sld_memory_high _sld_swap_high word
+unset _sld_update_event _sld_consumed _sld_update_kind _sld_update_old _sld_update_new _sld_update_message

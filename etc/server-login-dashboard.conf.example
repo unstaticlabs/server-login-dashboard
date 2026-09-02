@@ -22,3 +22,11 @@ SLD_SSH_SERVICE='ssh.service'
 # Used to turn SSH key fingerprints into human-readable key comments.
 # %h expands to the current user's home directory.
 SLD_AUTHORIZED_KEYS='%h/.ssh/authorized_keys'
+
+# Background updates. The systemd timer checks once daily and applies
+# fast-forward updates only after validating them.
+SLD_AUTO_UPDATE=1
+SLD_UPDATE_REPO='/opt/server-login-dashboard'
+SLD_UPDATE_REMOTE='origin'
+SLD_UPDATE_BRANCH='main'
+SLD_UPDATE_STATE_DIR='/var/lib/server-login-dashboard'

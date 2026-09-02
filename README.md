@@ -1,78 +1,106 @@
 # Server Login Dashboard
 
-A compact, attention-oriented SSH login dashboard for Linux production servers.
-Normal metrics stay quiet; exceptional conditions are highlighted, and update,
-reboot, and concurrent-session messages appear only when action is required.
+A compact, attention-oriented SSH login dashboard for Debian-family production
+servers. Normal metrics stay quiet; exceptional conditions and actionable
+notices appear only when attention is required.
 
 ## What it shows
 
 - A bold production warning and configurable stack name
-- Host, time, OS/kernel, uptime, load, disk, memory, and swap
-- Zombie processes and failed systemd units
-- Public IPs and, when installed, Tailscale IPs
-- The previous SSH key identity and source host
-- Pending Ubuntu updates and reboot requirements, only when applicable
-- Other active interactive SSH sessions, grouped by identity and host
-
-The SSH identity is the comment attached to the matching public key in the
-login user's `authorized_keys` file. Use meaningful key comments such as
-`alice@work-laptop` for useful output.
+- Host, OS/kernel, uptime, load, disk, memory, swap, health, and IP addresses
+- Previous SSH identity and other active interactive SSH sessions
+- Pending system updates and reboot requirements only when applicable
+- One-time success or failure results from background dashboard updates
 
 ## Install
 
 ```sh
-git clone <repository-url> server-login-dashboard
-cd server-login-dashboard
+sudo git clone https://github.com/unstaticlabs/server-login-dashboard.git /opt/server-login-dashboard
+cd /opt/server-login-dashboard
 sudo ./install.sh
-sudoedit /etc/server-login-dashboard.conf
 ```
 
-The installer creates the configuration only if it does not already exist, so
-future `git pull && sudo ./install.sh` upgrades preserve local server settings.
+With an interactive terminal, the installer presents a management menu and
+guides first-time configuration. Existing `/etc/server-login-dashboard.conf`
+settings are never overwritten unless **Review configuration** is selected.
 
-Ubuntu's standard MOTD is suppressed for root with `/root/.hushlogin`. Remove
-that file if you want the distribution MOTD as well as this dashboard.
-
-## Configure
-
-Start with [`etc/server-login-dashboard.conf.example`](etc/server-login-dashboard.conf.example).
-Each server needs only a short identity and threshold configuration:
+Direct commands are also available:
 
 ```sh
-SLD_ENVIRONMENT='PRODUCTION'
-SLD_STACK='ODOO STACK'
-SLD_ONLY_USER='root'
-SLD_DISK_WARN_PERCENT=80
-SLD_MEMORY_WARN_PERCENT=85
-SLD_SWAP_WARN_PERCENT=50
-SLD_TAILSCALE='auto'
+sudo ./install.sh install
+sudo ./install.sh configure
+sudo ./install.sh validate
+sudo ./install.sh update
+sudo ./install.sh status
+sudo ./install.sh uninstall
+sudo ./install.sh --non-interactive install
 ```
 
-Values are shell assignments loaded by the dashboard and the configuration
-must therefore be writable only by root.
+## Automatic updates
 
-## Requirements
+When `SLD_AUTO_UPDATE=1`, a systemd timer fetches `origin/main` once daily with
+up to two hours of randomized delay. It never contacts GitHub during login.
+Only clean, fast-forward updates are considered. A detached candidate is
+validated before installation, and failed installations restore the previous
+revision and deployed files.
 
-The core dashboard expects Linux `/proc`, `ip`, `ps`, `df`, `free`, `systemctl`,
-`journalctl`, and OpenSSH. Tailscale and Ubuntu's `update-notifier-common` are
-optional and detected automatically.
+**Trust warning:** servers tracking `main` automatically execute eligible
+commits as root. Protect repository write access and branch administration as
+production credentials.
 
-Previous-login and session attribution require permission to read the SSH
-journal; the default root-only setup has that permission.
-
-## Validate without logging in
+Useful operations:
 
 ```sh
-sudo SLD_CONFIG=/etc/server-login-dashboard.conf ./bin/server-login-dashboard
+sudo systemctl list-timers server-login-dashboard-update.timer
+sudo journalctl -u server-login-dashboard-update.service
+sudo systemctl disable --now server-login-dashboard-update.timer
+sudo ./install.sh update
+sudo ./install.sh status
 ```
 
-Color is enabled automatically when standard output is a terminal.
+Transient network failures are logged but do not create login warnings.
+Successful updates and actionable failures create a notice that is consumed by
+the next interactive dashboard display.
 
-## Uninstall
+## Configuration
+
+Configuration lives at `/etc/server-login-dashboard.conf`. See
+[`etc/server-login-dashboard.conf.example`](etc/server-login-dashboard.conf.example)
+for all values. Existing configurations remain compatible; omitted update
+settings receive these defaults:
 
 ```sh
-sudo ./uninstall.sh
+SLD_AUTO_UPDATE=1
+SLD_UPDATE_REPO='/opt/server-login-dashboard'
+SLD_UPDATE_REMOTE='origin'
+SLD_UPDATE_BRANCH='main'
+SLD_UPDATE_STATE_DIR='/var/lib/server-login-dashboard'
 ```
 
-The uninstaller deliberately preserves the local configuration and
-`/root/.hushlogin`.
+The SSH identity is derived from the comment on the matching public key in the
+login user's `authorized_keys`. Use meaningful comments such as
+`alice@work-laptop`.
+
+## Requirements and validation
+
+Ubuntu or Debian with systemd, Git, procps, iproute2, util-linux, coreutils, and
+OpenSSH client utilities are required. Tailscale and Ubuntu's
+`update-notifier-common` are optional and detected automatically.
+
+```sh
+sudo ./install.sh validate
+./tests/run.sh
+```
+
+Previous-login and session attribution require access to the SSH journal; the
+default root-only setup has it. Ubuntu's standard MOTD is suppressed for root
+with `/root/.hushlogin`.
+
+## Recovery and uninstall
+
+If an update is refused, inspect the checkout and service log, resolve local
+changes or divergence, then run `sudo ./install.sh update`. The updater will
+not discard local work.
+
+Uninstalling removes the executable, profile hook, and timer. It deliberately
+preserves `/etc/server-login-dashboard.conf`, update state, and `.hushlogin`.

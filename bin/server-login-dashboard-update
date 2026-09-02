@@ -1,0 +1,122 @@
+#!/bin/sh
+set -eu
+
+config=${SLD_CONFIG:-/etc/server-login-dashboard.conf}
+# shellcheck disable=SC1090
+[ -r "$config" ] && . "$config"
+
+: "${SLD_UPDATE_REPO:=/opt/server-login-dashboard}"
+: "${SLD_UPDATE_REMOTE:=origin}"
+: "${SLD_UPDATE_BRANCH:=main}"
+: "${SLD_UPDATE_STATE_DIR:=/var/lib/server-login-dashboard}"
+
+state_dir=${SLD_STATE_DIR:-$SLD_UPDATE_STATE_DIR}
+lock_file=${SLD_UPDATE_LOCK_FILE:-/run/server-login-dashboard-update.lock}
+manual=0
+[ "${1:-}" = --manual ] && manual=1
+
+say() { printf '%s\n' "$*"; }
+short() { git -C "$SLD_UPDATE_REPO" rev-parse --short "$1"; }
+write_event() {
+  kind=$1 old=$2 new=$3 message=$4
+  mkdir -p "$state_dir"
+  tmp="$state_dir/update-event.$$"
+  umask 077
+  printf '%s|%s|%s|%s\n' "$kind" "$old" "$new" "$message" > "$tmp"
+  mv -f "$tmp" "$state_dir/update-event"
+}
+actionable_failure() {
+  old=${2:---}
+  new=${3:---}
+  write_event failure "$old" "$new" "$1"
+  printf 'Update refused: %s\n' "$1" >&2
+  exit 1
+}
+cleanup() {
+  if [ -n "${candidate:-}" ] && [ -d "$candidate" ]; then
+    git -C "$SLD_UPDATE_REPO" worktree remove --force "$candidate" >/dev/null 2>&1 || true
+  fi
+  [ -z "${backup:-}" ] || [ ! -d "$backup" ] || rm -rf "$backup"
+}
+trap cleanup EXIT HUP INT TERM
+
+if [ "$(id -u)" -ne 0 ] && [ "${SLD_ALLOW_NON_ROOT:-0}" != 1 ]; then
+  printf '%s\n' 'Run the updater as root.' >&2
+  exit 1
+fi
+for required_command in git flock mktemp; do
+  command -v "$required_command" >/dev/null 2>&1 || actionable_failure "required command is missing: $required_command"
+done
+
+mkdir -p "$(dirname -- "$lock_file")"
+exec 9>"$lock_file"
+if ! flock -n 9; then
+  [ "$manual" -eq 0 ] || say 'Another dashboard update is already running.'
+  exit 0
+fi
+
+[ -d "$SLD_UPDATE_REPO/.git" ] || actionable_failure "not a Git checkout: $SLD_UPDATE_REPO"
+git -C "$SLD_UPDATE_REPO" remote get-url "$SLD_UPDATE_REMOTE" >/dev/null 2>&1 || actionable_failure "Git remote not found: $SLD_UPDATE_REMOTE"
+old_revision=$(git -C "$SLD_UPDATE_REPO" rev-parse HEAD) || actionable_failure 'cannot read the installed revision'
+old_short=$(short "$old_revision")
+
+if [ -n "$(git -C "$SLD_UPDATE_REPO" status --porcelain --untracked-files=normal)" ]; then
+  actionable_failure 'the dashboard checkout has local changes; review them and run ./install.sh update' "$old_short"
+fi
+
+say "Fetching $SLD_UPDATE_REMOTE/$SLD_UPDATE_BRANCH..."
+if ! git -C "$SLD_UPDATE_REPO" fetch --quiet "$SLD_UPDATE_REMOTE" "$SLD_UPDATE_BRANCH"; then
+  say 'Update check skipped: the remote is temporarily unavailable.' >&2
+  exit 0
+fi
+upstream="$SLD_UPDATE_REMOTE/$SLD_UPDATE_BRANCH"
+new_revision=$(git -C "$SLD_UPDATE_REPO" rev-parse "$upstream") || actionable_failure "cannot resolve $upstream" "$old_short"
+new_short=$(short "$new_revision")
+
+if [ "$old_revision" = "$new_revision" ]; then
+  say "Already current at $old_short."
+  exit 0
+fi
+if ! git -C "$SLD_UPDATE_REPO" merge-base --is-ancestor "$old_revision" "$new_revision"; then
+  actionable_failure "local revision cannot fast-forward to $upstream" "$old_short" "$new_short"
+fi
+
+candidate=$(mktemp -d "${TMPDIR:-/tmp}/server-login-dashboard-candidate.XXXXXX")
+git -C "$SLD_UPDATE_REPO" worktree add --quiet --detach "$candidate" "$new_revision"
+if ! "$candidate/bin/server-login-dashboard-validate" "$candidate"; then
+  actionable_failure 'candidate package validation failed' "$old_short" "$new_short"
+fi
+if [ -x "$candidate/tests/run.sh" ] && ! "$candidate/tests/run.sh" package "$candidate"; then
+  actionable_failure 'candidate package tests failed' "$old_short" "$new_short"
+fi
+git -C "$SLD_UPDATE_REPO" worktree remove --force "$candidate"
+candidate=''
+
+backup=$(mktemp -d "${TMPDIR:-/tmp}/server-login-dashboard-backup.XXXXXX")
+for path in usr/local/sbin/server-login-dashboard usr/local/sbin/server-login-dashboard-update etc/profile.d/server-login-dashboard.sh etc/systemd/system/server-login-dashboard-update.service etc/systemd/system/server-login-dashboard-update.timer; do
+  source_path="${SLD_ROOT:-}/$path"
+  if [ -e "$source_path" ]; then
+    mkdir -p "$backup/$(dirname -- "$path")"
+    cp -p "$source_path" "$backup/$path"
+  fi
+done
+
+if ! git -C "$SLD_UPDATE_REPO" merge --quiet --ff-only "$new_revision" ||
+   ! "$SLD_UPDATE_REPO/install.sh" --non-interactive install ||
+   ! "$SLD_UPDATE_REPO/install.sh" --non-interactive validate; then
+  printf '%s\n' 'Installation failed; restoring the previous revision and deployed files.' >&2
+  git -C "$SLD_UPDATE_REPO" reset --hard "$old_revision" >/dev/null
+  for path in usr/local/sbin/server-login-dashboard usr/local/sbin/server-login-dashboard-update etc/profile.d/server-login-dashboard.sh etc/systemd/system/server-login-dashboard-update.service etc/systemd/system/server-login-dashboard-update.timer; do
+    if [ -e "$backup/$path" ]; then
+      mkdir -p "$(dirname -- "${SLD_ROOT:-}/$path")"
+      cp -p "$backup/$path" "${SLD_ROOT:-}/$path"
+    fi
+  done
+  if [ -z "${SLD_ROOT:-}" ] && [ "${SLD_SKIP_SYSTEMD:-0}" != 1 ]; then systemctl daemon-reload; fi
+  actionable_failure 'installation failed and was rolled back; inspect system logs' "$old_short" "$new_short"
+fi
+
+mkdir -p "$state_dir"
+printf '%s\n' "$new_revision" > "$state_dir/installed-revision"
+write_event success "$old_short" "$new_short" 'automatic update installed successfully'
+say "Updated dashboard from $old_short to $new_short."
