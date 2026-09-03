@@ -192,7 +192,6 @@ if [ "${_sld_updates:-0}" -gt 0 ] 2>/dev/null; then
   else printf '%b  NOTICE: %s OS PACKAGE %s PENDING%b\n' "$_sld_yellow" "$_sld_updates" "$word" "$_sld_reset"; fi
   printf '%b  Review: apt list --upgradable%b\n' "$_sld_yellow" "$_sld_reset"
   printf '%b  Apply:  sudo apt update && sudo apt upgrade%b\n' "$_sld_yellow" "$_sld_reset"
-  printf '%b  This dashboard reports OS updates; it does not install them.%b\n' "$_sld_yellow" "$_sld_reset"
 fi
 [ "$_sld_reboot" -eq 1 ] && { _sld_notice_gap; printf '%b  WARNING: SYSTEM REBOOT REQUIRED%b\n' "$_sld_red" "$_sld_reset"; }
 if [ "$_sld_update_kind" = success ]; then

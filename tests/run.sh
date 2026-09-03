@@ -43,9 +43,8 @@ test ! -e "$state/update-event"
 printf '%s\n' "$dashboard_output" | grep -q 'NOTICE: 1 OS PACKAGE UPDATE PENDING'
 printf '%s\n' "$dashboard_output" | grep -q 'Review: apt list --upgradable'
 printf '%s\n' "$dashboard_output" | grep -q 'Apply:  sudo apt update && sudo apt upgrade'
-printf '%s\n' "$dashboard_output" | grep -q 'This dashboard reports OS updates; it does not install them.'
 printf '%s\n' "$dashboard_output" | awk '
-  /This dashboard reports OS updates; it does not install them\./ { update_end=NR }
+  /Apply:  sudo apt update && sudo apt upgrade/ { update_end=NR }
   /INFO: LOGIN DASHBOARD UPDATED/ { if (NR != update_end + 2) exit 1; found=1 }
   END { if (!found) exit 1 }
 '
