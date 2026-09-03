@@ -16,7 +16,7 @@ notices appear only when attention is required.
 ## What it shows
 
 - A bold production warning and configurable stack name
-- Host, OS/kernel, uptime, load, disk, memory, swap, health, and IP addresses
+- Host, OS/kernel, uptime, load, local disks, memory, swap, health, and IP addresses
 - Resource metrics use yellow `WARNING` and red `ERROR` thresholds
 - Previous SSH identity and other active interactive SSH sessions
 - Pending OS package updates, review/apply commands, and reboot requirements
@@ -103,9 +103,11 @@ Resource severity defaults are:
 | Memory | 85% | 95% |
 | Swap | 50% | 80% |
 
-Disk, memory, and swap limits are configurable in
-`/etc/server-login-dashboard.conf`. Missing error settings retain the defaults
-above, so existing configurations remain compatible.
+The disk row automatically reports root and each unique local device-backed
+filesystem, excluding boot, loop, duplicate bind, and container overlay mounts.
+Its severity reflects the fullest displayed filesystem. Disk, memory, and swap
+limits are configurable in `/etc/server-login-dashboard.conf`. Missing error
+settings retain the defaults above, so existing configurations remain compatible.
 
 ## Requirements and validation
 

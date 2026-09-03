@@ -44,8 +44,40 @@ _sld_uptime=$(uptime -p 2>/dev/null | sed 's/^up //' || printf unknown)
 _sld_load=$(awk '{print $1 " / " $2 " / " $3}' /proc/loadavg 2>/dev/null || printf unknown)
 _sld_load_one=$(awk '{print $1}' /proc/loadavg 2>/dev/null)
 _sld_cpus=$(getconf _NPROCESSORS_ONLN 2>/dev/null || printf 1)
-_sld_disk=$(LC_ALL=C df -hP / 2>/dev/null | awk 'NR == 2 {print $3 " / " $2 " (" $5 ")"}')
-_sld_disk_pct=$(LC_ALL=C df -P / 2>/dev/null | awk 'NR == 2 {gsub(/%/, "", $5); print $5}')
+_sld_disk_data=$(LC_ALL=C df -hP -l 2>/dev/null | awk '
+function record(source, mountpoint, used, size, capacity) {
+  if (source in seen && mountpoint != "/") return
+  if (!(source in seen)) order[++count] = source
+  seen[source] = 1
+  mounts[source] = mountpoint
+  used_space[source] = used
+  total_space[source] = size
+  capacities[source] = capacity
+  if (mountpoint == "/") root_source = source
+}
+function emit(source, percent) {
+  if (source == "" || source in emitted) return
+  printf "%s%s: %s / %s (%s)", separator, mounts[source], used_space[source], total_space[source], capacities[source]
+  separator = " · "
+  percent = capacities[source]
+  gsub(/%/, "", percent)
+  if (percent + 0 > highest_percent) highest_percent = percent + 0
+  emitted[source] = 1
+}
+NR > 1 {
+  source = $1
+  mountpoint = $6
+  if (mountpoint == "/" || (source ~ /^\/dev\// && source !~ /^\/dev\/loop/ && mountpoint !~ /^\/boot(\/|$)/)) {
+    record(source, mountpoint, $3, $2, $5)
+  }
+}
+END {
+  emit(root_source)
+  for (i = 1; i <= count; i++) emit(order[i])
+  printf "|%d\n", highest_percent
+}')
+_sld_disks=${_sld_disk_data%|*}
+_sld_disks_pct=${_sld_disk_data##*|}
 _sld_memory=$(LC_ALL=C free -h 2>/dev/null | awk '/^Mem:/ {printf "%s / %s (%.0f%%)", $3, $2, $3 * 100 / $2}')
 _sld_memory_pct=$(LC_ALL=C free -b 2>/dev/null | awk '/^Mem:/ {printf "%.0f", $3 * 100 / $2}')
 _sld_swap=$(LC_ALL=C free -h 2>/dev/null | awk '/^Swap:/ {if ($2 == "0B") print "disabled"; else printf "%s / %s (%.0f%%)", $3, $2, $3 * 100 / $2}')
@@ -161,7 +193,7 @@ _sld_load_level=$(awk -v l1="${_sld_load_one:-0}" -v cpu_count="${_sld_cpus:-1}"
   else if (l1 >= cpu_count) print 1
   else print 0
 }')
-_sld_disk_level=$(_sld_percent_level "$_sld_disk_pct" "$SLD_DISK_WARN_PERCENT" "$SLD_DISK_ERROR_PERCENT")
+_sld_disk_level=$(_sld_percent_level "$_sld_disks_pct" "$SLD_DISK_WARN_PERCENT" "$SLD_DISK_ERROR_PERCENT")
 _sld_memory_level=$(_sld_percent_level "$_sld_memory_pct" "$SLD_MEMORY_WARN_PERCENT" "$SLD_MEMORY_ERROR_PERCENT")
 _sld_swap_level=$(_sld_percent_level "$_sld_swap_pct" "$SLD_SWAP_WARN_PERCENT" "$SLD_SWAP_ERROR_PERCENT")
 
@@ -173,7 +205,7 @@ printf '  %-12s %s\n' Time "$_sld_time"
 printf '  %-12s %s\n' System "$_sld_os · $_sld_kernel"
 printf '  %-12s %s\n' Uptime "$_sld_uptime"
 _sld_metric Load "$_sld_load" "$_sld_load_level"
-_sld_metric 'Disk /' "$_sld_disk" "$_sld_disk_level"
+_sld_metric Disks "$_sld_disks" "$_sld_disk_level"
 _sld_metric Memory "$_sld_memory" "$_sld_memory_level"
 _sld_metric Swap "$_sld_swap" "$_sld_swap_level"
 _sld_metric Health "$_sld_health" "$_sld_health_high" CHECK
@@ -212,7 +244,7 @@ printf '\n'
 
 unset -f _sld_metric _sld_percent_level _sld_key_identity _sld_notice_gap 2>/dev/null || true
 unset _sld_config _sld_user _sld_home _sld_keys _sld_has_tailscale _sld_host _sld_time _sld_os _sld_kernel
-unset _sld_uptime _sld_load _sld_load_one _sld_cpus _sld_disk _sld_disk_pct _sld_memory _sld_memory_pct
+unset _sld_uptime _sld_load _sld_load_one _sld_cpus _sld_disk_data _sld_disks _sld_disks_pct _sld_memory _sld_memory_pct
 unset _sld_swap _sld_swap_pct _sld_public_v4 _sld_public_v6 _sld_tail_v4 _sld_tail_v6 _sld_ips _sld_tail_status
 unset _sld_zombies _sld_failed _sld_zw _sld_fw _sld_health _sld_health_high _sld_ssh_log _sld_ssh_stamp
 unset _sld_ssh_time _sld_ssh_source _sld_ssh_fp _sld_ssh_identity _sld_ssh_device _sld_previous _sld_previous_high

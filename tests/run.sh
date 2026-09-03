@@ -21,6 +21,23 @@ rootfs="$fixture/root"
 mkdir -p "$rootfs/etc" "$rootfs/opt"
 printf 'ID=debian\n' > "$rootfs/etc/os-release"
 
+fake_bin="$fixture/bin"
+mkdir -p "$fake_bin"
+fake_df="$fake_bin/df"
+fake_df_output="$fixture/df-output"
+{
+  printf '%s\n' 'Filesystem 1024-blocks Used Available Capacity Mounted on'
+  printf '%s\n' '/dev/sdb 79G 52G 26G 67% /srv/storage'
+  printf '%s\n' '/dev/sda15 253M 154K 252M 1% /boot/efi'
+  printf '%s\n' 'overlay 79G 52G 26G 67% /srv/storage/docker/rootfs/overlayfs/example'
+  printf '%s\n' '/dev/loop0 64M 64M 0 100% /snap/example/1'
+  printf '%s\n' '/dev/sda1 75G 22G 53G 30% /srv/storage/docker/volumes/example/_data'
+  printf '%s\n' '/dev/sda1 75G 22G 53G 30% /'
+  printf '%s\n' '/dev/sda1 75G 22G 53G 30% /srv/storage/docker/volumes/other/_data'
+} > "$fake_df_output"
+printf '%s\n' '#!/bin/sh' "sed -n '1,\$p' '$fake_df_output'" > "$fake_df"
+chmod +x "$fake_df"
+
 SLD_ROOT="$rootfs" SLD_CONFIG="$rootfs/etc/server-login-dashboard.conf" SLD_ALLOW_NON_ROOT=1 SLD_SKIP_PLATFORM_CHECK=1 SLD_SKIP_SYSTEMD=1 \
   "$tree/install.sh" --non-interactive install >/dev/null
 test -x "$rootfs/usr/local/sbin/server-login-dashboard"
@@ -37,9 +54,11 @@ printf 'success|abc1234|def5678|installed\n' > "$state/update-event"
 apt_check="$fixture/apt-check"
 printf '#!/bin/sh\nprintf "1;0\\n"\n' > "$apt_check"
 chmod +x "$apt_check"
-dashboard_output=$(SLD_STATE_DIR="$state" SLD_CONFIG="$rootfs/etc/server-login-dashboard.conf" SLD_ONLY_USER='' \
+dashboard_output=$(PATH="$fake_bin:$PATH" SLD_STATE_DIR="$state" SLD_CONFIG="$rootfs/etc/server-login-dashboard.conf" SLD_ONLY_USER='' \
   SLD_APT_UPDATES=1 _SLD_APT_CHECK_COMMAND="$apt_check" "$tree/bin/server-login-dashboard")
 test ! -e "$state/update-event"
+printf '%s\n' "$dashboard_output" | grep -F 'Disks        /: 22G / 75G (30%) · /srv/storage: 52G / 79G (67%)' >/dev/null
+if printf '%s\n' "$dashboard_output" | grep -E '/boot/efi|/snap/example|/srv/storage/docker' >/dev/null; then exit 1; fi
 printf '%s\n' "$dashboard_output" | grep -q 'NOTICE: 1 OS PACKAGE UPDATE PENDING'
 printf '%s\n' "$dashboard_output" | grep -q 'Review: apt list --upgradable'
 printf '%s\n' "$dashboard_output" | grep -q 'Apply:  sudo apt update && sudo apt upgrade'
@@ -53,8 +72,8 @@ printf '%s\n' "$dashboard_output" | awk '
 color_config="$fixture/color.conf"
 {
   printf "SLD_ONLY_USER=''\n"
-  printf 'SLD_DISK_WARN_PERCENT=0\n'
-  printf 'SLD_DISK_ERROR_PERCENT=101\n'
+  printf 'SLD_DISK_WARN_PERCENT=60\n'
+  printf 'SLD_DISK_ERROR_PERCENT=90\n'
   printf 'SLD_MEMORY_WARN_PERCENT=0\n'
   printf 'SLD_MEMORY_ERROR_PERCENT=101\n'
   printf 'SLD_SWAP_WARN_PERCENT=0\n'
@@ -62,18 +81,26 @@ color_config="$fixture/color.conf"
   printf "SLD_TAILSCALE='0'\n"
   printf "SLD_APT_UPDATES='0'\n"
 } > "$color_config"
-color_output=$(script -qec "SLD_CONFIG='$color_config' '$tree/bin/server-login-dashboard'" /dev/null)
+color_output=$(script -qec "PATH='$fake_bin:$PATH' SLD_CONFIG='$color_config' '$tree/bin/server-login-dashboard'" /dev/null)
 red=$(printf '\033[1;31m')
 yellow=$(printf '\033[1;33m')
-for label in 'Disk /' Memory Swap; do
+for label in Disks Memory Swap; do
   printf '%s\n' "$color_output" | grep -F "$label" | grep -F "$yellow" | grep -F WARNING >/dev/null
 done
 
-sed 's/ERROR_PERCENT=101/ERROR_PERCENT=0/' "$color_config" > "$color_config.error"
-color_output=$(script -qec "SLD_CONFIG='$color_config.error' '$tree/bin/server-login-dashboard'" /dev/null)
-for label in 'Disk /' Memory Swap; do
+sed 's/ERROR_PERCENT=101/ERROR_PERCENT=0/; s/SLD_DISK_ERROR_PERCENT=90/SLD_DISK_ERROR_PERCENT=60/' "$color_config" > "$color_config.error"
+color_output=$(script -qec "PATH='$fake_bin:$PATH' SLD_CONFIG='$color_config.error' '$tree/bin/server-login-dashboard'" /dev/null)
+for label in Disks Memory Swap; do
   printf '%s\n' "$color_output" | grep -F "$label" | grep -F "$red" | grep -F ERROR >/dev/null
 done
+
+{
+  printf '%s\n' 'Filesystem 1024-blocks Used Available Capacity Mounted on'
+  printf '%s\n' 'overlay 75G 22G 53G 30% /'
+} > "$fake_df_output"
+single_disk_output=$(PATH="$fake_bin:$PATH" SLD_CONFIG="$color_config" "$tree/bin/server-login-dashboard")
+printf '%s\n' "$single_disk_output" | grep -F 'Disks        /: 22G / 75G (30%)' >/dev/null
+if printf '%s\n' "$single_disk_output" | grep -F Disks | grep -F '·' >/dev/null; then exit 1; fi
 
 printf '%s\n' 'Installation, dashboard color, and one-time notice tests passed.'
 
