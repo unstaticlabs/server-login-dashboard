@@ -78,10 +78,12 @@ END {
 }')
 _sld_disks=${_sld_disk_data%|*}
 _sld_disks_pct=${_sld_disk_data##*|}
-_sld_memory=$(LC_ALL=C free -h 2>/dev/null | awk '/^Mem:/ {printf "%s / %s (%.0f%%)", $3, $2, $3 * 100 / $2}')
+_sld_memory=$(LC_ALL=C free -h 2>/dev/null | awk '/^Mem:/ {printf "%s / %s", $3, $2}')
 _sld_memory_pct=$(LC_ALL=C free -b 2>/dev/null | awk '/^Mem:/ {printf "%.0f", $3 * 100 / $2}')
-_sld_swap=$(LC_ALL=C free -h 2>/dev/null | awk '/^Swap:/ {if ($2 == "0B") print "disabled"; else printf "%s / %s (%.0f%%)", $3, $2, $3 * 100 / $2}')
+[ -z "$_sld_memory" ] || _sld_memory="$_sld_memory (${_sld_memory_pct:-0}%)"
+_sld_swap=$(LC_ALL=C free -h 2>/dev/null | awk '/^Swap:/ {if ($2 == "0B") print "disabled"; else printf "%s / %s", $3, $2}')
 _sld_swap_pct=$(LC_ALL=C free -b 2>/dev/null | awk '/^Swap:/ {if ($2 == 0) print 0; else printf "%.0f", $3 * 100 / $2}')
+[ -z "$_sld_swap" ] || [ "$_sld_swap" = disabled ] || _sld_swap="$_sld_swap (${_sld_swap_pct:-0}%)"
 
 _sld_public_v4=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i=1;i<=NF;i++) if ($i=="src") {print $(i+1); exit}}')
 _sld_public_v6=$(ip -o -6 addr show scope global 2>/dev/null | awk '$2 != "tailscale0" {split($4,a,"/"); print a[1]; exit}')

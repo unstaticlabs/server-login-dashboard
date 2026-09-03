@@ -38,6 +38,27 @@ fake_df_output="$fixture/df-output"
 printf '%s\n' '#!/bin/sh' "sed -n '1,\$p' '$fake_df_output'" > "$fake_df"
 chmod +x "$fake_df"
 
+fake_free="$fake_bin/free"
+fake_free_h_output="$fixture/free-h-output"
+fake_free_b_output="$fixture/free-b-output"
+{
+  printf '%s\n' '               total        used        free      shared  buff/cache   available'
+  printf '%s\n' 'Mem:           8.0Gi       2.0Gi       6.0Gi          0B          0B       6.0Gi'
+  printf '%s\n' 'Swap:          8.0Gi       282Mi       7.7Gi'
+} > "$fake_free_h_output"
+{
+  printf '%s\n' '               total        used        free      shared  buff/cache   available'
+  printf '%s\n' 'Mem:      8589934592  2147483648  6442450944           0           0  6442450944'
+  printf '%s\n' 'Swap:     8589934592   295698432  8294236160'
+} > "$fake_free_b_output"
+{
+  printf '%s\n' '#!/bin/sh' "case \"\$1\" in"
+  printf '%s\n' "  -h) sed -n '1,\$p' '$fake_free_h_output' ;;"
+  printf '%s\n' "  -b) sed -n '1,\$p' '$fake_free_b_output' ;;"
+  printf '%s\n' '  *) exit 2 ;;' 'esac'
+} > "$fake_free"
+chmod +x "$fake_free"
+
 SLD_ROOT="$rootfs" SLD_CONFIG="$rootfs/etc/server-login-dashboard.conf" SLD_ALLOW_NON_ROOT=1 SLD_SKIP_PLATFORM_CHECK=1 SLD_SKIP_SYSTEMD=1 \
   "$tree/install.sh" --non-interactive install >/dev/null
 test -x "$rootfs/usr/local/sbin/server-login-dashboard"
@@ -59,6 +80,9 @@ dashboard_output=$(PATH="$fake_bin:$PATH" SLD_STATE_DIR="$state" SLD_CONFIG="$ro
 test ! -e "$state/update-event"
 printf '%s\n' "$dashboard_output" | grep -F 'Disks        /: 22G / 75G (30%) · /srv/storage: 52G / 79G (67%)' >/dev/null
 if printf '%s\n' "$dashboard_output" | grep -E '/boot/efi|/snap/example|/srv/storage/docker' >/dev/null; then exit 1; fi
+printf '%s\n' "$dashboard_output" | grep -F 'Memory       2.0Gi / 8.0Gi (25%)' >/dev/null
+printf '%s\n' "$dashboard_output" | grep -F 'Swap         282Mi / 8.0Gi (3%)' >/dev/null
+if printf '%s\n' "$dashboard_output" | grep -F '(3525%)' >/dev/null; then exit 1; fi
 printf '%s\n' "$dashboard_output" | grep -q 'NOTICE: 1 OS PACKAGE UPDATE PENDING'
 printf '%s\n' "$dashboard_output" | grep -q 'Review: apt list --upgradable'
 printf '%s\n' "$dashboard_output" | grep -q 'Apply:  sudo apt update && sudo apt upgrade'
