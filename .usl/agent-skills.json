@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "hub": "unstaticlabs/agent-skills",
+  "visibility": "public",
+  "agents": ["claude", "codex"],
+  "skills": [
+    "committing-and-syncing-work",
+    "finding-bug-variants",
+    "preserving-decision-rationale",
+    "threat-modeling-repositories"
+  ],
+  "bundles": []
+}

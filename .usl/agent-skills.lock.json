@@ -1,0 +1,83 @@
+{
+  "hub": {
+    "repository": "unstaticlabs/agent-skills",
+    "revision": "ed0b3789b941689d9024229960e92fc6a1832f41"
+  },
+  "links": {
+    ".claude/skills/committing-and-syncing-work": "../../.agents/skills/committing-and-syncing-work",
+    ".claude/skills/finding-bug-variants": "../../.agents/skills/finding-bug-variants",
+    ".claude/skills/preserving-decision-rationale": "../../.agents/skills/preserving-decision-rationale",
+    ".claude/skills/threat-modeling-repositories": "../../.agents/skills/threat-modeling-repositories"
+  },
+  "manifest_sha256": "edb216e32797866513b9f3cd20d0caf98319822af303c177f81edc35d5397dcd",
+  "schema": 1,
+  "skills": {
+    "committing-and-syncing-work": {
+      "agents": [
+        "claude",
+        "codex"
+      ],
+      "files": {
+        "LICENSE.txt": "4b4447da5344f8b2d3a8a19ba8366d1ac7a24d9ab4690bd04576dc772ddf8321",
+        "NOTICE.md": "ad0d675036c92bdc0c542073cd6527847436e0f226048a158ba130a82ae86fad",
+        "SKILL.md": "384a7da21f5db9c95bf3b950b3c48cbc1abebc49046709085bf6b8554c699143",
+        "evals/cases.json": "3c8c96ea7057222b4603bcf67d46fbadff3293f9ba328e5a98a4beebbb9dcac5",
+        "references/repository-policy.md": "7ed66a48646effae2d6c146f8084d7f4fd9812574bad1f01234bab2a5fbb76e9"
+      },
+      "path": ".agents/skills/committing-and-syncing-work",
+      "risk": "high",
+      "status": "experimental",
+      "version": "0.1.0"
+    },
+    "finding-bug-variants": {
+      "agents": [
+        "claude",
+        "codex"
+      ],
+      "files": {
+        "LICENSE.txt": "7abe19ec9bb73b36141b999b861d24ad855e808bafe0f81e84cce28556f6c297",
+        "NOTICE.md": "98107358a94a72e4f1f419854bc6507a93ce651189269aba20eef8d92b2b764f",
+        "SKILL.md": "455153c25eb3cb8337a1c07fd94a5b2206d525b08812a10cd50f7ffaa54e8eda",
+        "evals/cases.json": "955afca368cfb2b298004e3230090dc0616bf6bb5571939353116da09291e19f"
+      },
+      "path": ".agents/skills/finding-bug-variants",
+      "risk": "medium",
+      "status": "experimental",
+      "version": "0.1.0"
+    },
+    "preserving-decision-rationale": {
+      "agents": [
+        "claude",
+        "codex"
+      ],
+      "files": {
+        "LICENSE.txt": "44d2c60afe04d9c481caa77df83cc96e61649fde239d290405a2ac5abd584097",
+        "NOTICE.md": "bad96f0833ab5653d4903eeca04a336704446c49471bcd14fd0d19ae3d8ef2a2",
+        "SKILL.md": "65ea78e1bb0c016b10b9266a111e58c267e7b1e1b4e748ff169716e349640b19",
+        "evals/cases.json": "c71b5a7f68229d7c4f9e52650efdca5b02b0a1dbb45e3cffcd41ccd84bc8f47f"
+      },
+      "path": ".agents/skills/preserving-decision-rationale",
+      "risk": "low",
+      "status": "experimental",
+      "version": "0.1.0"
+    },
+    "threat-modeling-repositories": {
+      "agents": [
+        "claude",
+        "codex"
+      ],
+      "files": {
+        "LICENSE.txt": "4dd13869245e356246a5b770723247bbb80a8f07a181d1d3d873a1734297cdb9",
+        "NOTICE.md": "1c5688261cd75c926bfd0d133cf59b471ab7181509b1cc7447dcfc36cbeee783",
+        "SKILL.md": "4f6998426b2adf8520c69107889b0a9aee840d13b1f8f810c370c096d76823a9",
+        "evals/cases.json": "4b3ea40c7a8def8a2cc5fa805a40807d470fe35018597268fc8a39703104ab2d",
+        "references/report-format.md": "9d12769b478cb52299481559ac9a689aed2587144848f398eedacaf7113fc0ce"
+      },
+      "path": ".agents/skills/threat-modeling-repositories",
+      "risk": "low",
+      "status": "experimental",
+      "version": "0.1.0"
+    }
+  },
+  "verifier_sha256": "10e47af513ba0bc320a6c4af162f4e6be9994d8dc73596e9e7b61385b63267fc"
+}
