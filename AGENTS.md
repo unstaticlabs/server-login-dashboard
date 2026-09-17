@@ -37,6 +37,9 @@ keys, user identities, or production output to the repository.
 - `systemd/`: daily root updater service and timer.
 - `tests/run.sh`: package, installation, event, locking, update, and rollback tests.
 - `.github/workflows/test.yml`: Ubuntu and Debian CI definition.
+- `.agents/skills` and `.claude/skills`: snapshots of skills from `unstaticlabs/agent-skills`,
+  selected in `.usl/agent-skills.json` and pinned in `.usl/agent-skills.lock.json`. Do not
+  edit them by hand; `.github/workflows/agent-skills.yml` verifies them.
 
 ## Non-negotiable behavior
 
